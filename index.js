@@ -15,6 +15,7 @@ app.get("/health", (req, res) => {
 app.post("/chat", (req, res) => {
   try {
     const { message } = req.body;
+    res.json({ reply: "Mock response" });
 
     if (!message || message.trim().length === 0) {
       return res.status(400).json({ error: "Message cannot be empty" });
