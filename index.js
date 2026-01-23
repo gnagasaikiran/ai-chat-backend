@@ -4,6 +4,12 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://ai-chat-frontend.vercel.app", // temporary placeholder
+];
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -38,4 +44,20 @@ app.post("/chat", (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
   console.log(`✅ Server running on http://localhost:${PORT}`),
+);
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // allow requests with no origin (Postman, curl)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error("CORS not allowed for this origin"), false);
+      }
+    },
+    methods: ["GET", "POST"],
+  }),
 );
