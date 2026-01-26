@@ -27,3 +27,13 @@ Body:
 {
 "message": "Hello"
 }
+
+## AI Prompt Design
+
+The backend uses a system prompt to control AI behavior and ensure:
+
+- predictable responses
+- structured output
+- enterprise‑friendly communication
+
+Current implementation uses a mock AI, but the architecture is ready for real LLM integration.

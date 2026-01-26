@@ -4,60 +4,49 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "https://ai-chat-frontend.vercel.app", // temporary placeholder
-];
-
 const app = express();
+
+/* ✅ CORS – keep it simple for now */
 app.use(cors());
+
+/* ✅ Middleware */
 app.use(express.json());
 
+/* ✅ Health check */
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+/* ✅ Chat API */
 app.post("/chat", (req, res) => {
   try {
     const { message } = req.body;
-    res.json({ reply: "Mock response" });
 
+    // Validate input FIRST
     if (!message || message.trim().length === 0) {
       return res.status(400).json({ error: "Message cannot be empty" });
     }
 
-    // Mock AI response (temporary)
-    const reply =
-      `✅ AI Response (Mock)\n\n` +
-      `You said: "${message}"\n\n` +
-      `Next steps:\n1) Clarify goal\n2) Provide example\n3) Implement solution\n`;
+    // Structured AI-style response (mock)
+    const reply = {
+      summary: "User sent a greeting message.",
+      keyPoints: [
+        "Message received successfully",
+        "Backend API is functioning correctly",
+      ],
+      nextActions: ["Integrate real AI provider", "Enhance frontend rendering"],
+    };
 
+    // Send response ONCE
     return res.json({ reply });
   } catch (err) {
-    return res
-      .status(500)
-      .json({ error: "Server error", details: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
+/* ✅ Start server */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`✅ Server running on http://localhost:${PORT}`),
-);
-
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // allow requests with no origin (Postman, curl)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      } else {
-        return callback(new Error("CORS not allowed for this origin"), false);
-      }
-    },
-    methods: ["GET", "POST"],
-  }),
-);
+app.listen(PORT, () => {
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+});
