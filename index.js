@@ -1,97 +1,99 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
+import helmet from "helmet";
+import morgan from "morgan";
+import { v4 as uuid } from "uuid";
+import { config } from "./config.js";
 
-dotenv.config();
-
+/** ---------------- App setup ---------------- */
 const app = express();
 
-/* ---------- Middleware ---------- */
-app.use(cors()); // Keep open during development; tighten later for production
-app.use(express.json({ limit: "1mb" })); // basic body size limit
+/** Security headers */
+app.use(helmet()); // safe defaults
 
-/* ---------- In-memory rate limit (simple dev guard) ---------- */
-// NOTE: This resets on server restart and is per-process only.
-// Good enough for development demos and basic protection.
-const hits = new Map(); // ip -> [timestamps]
+/** Request ID for tracing across logs */
+app.use((req, _res, next) => {
+  req.id = uuid();
+  next();
+});
 
-function rateLimit(req, res) {
-  const ip =
-    req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() ||
-    req.socket.remoteAddress ||
-    "local";
+/** Access logs (with request id) */
+morgan.token("id", (req) => req.id);
+app.use(
+  morgan(":id :method :url :status :res[content-length] - :response-time ms"),
+);
 
-  const now = Date.now();
-  const windowMs = 15 * 1000; // 15 seconds window
-  const maxReq = 5; // up to 5 requests per 15s
+/** JSON parser (limit kept small) */
+app.use(express.json({ limit: "1mb" }));
 
-  const recent = (hits.get(ip) || []).filter((t) => now - t < windowMs);
-  if (recent.length >= maxReq) {
-    return {
-      blocked: true,
-      res: res
-        .status(429)
-        .json({
-          error: {
-            code: "RATE_LIMIT",
-            message: "Too many requests, slow down.",
-          },
-        }),
-    };
-  }
-  hits.set(ip, [...recent, now]);
-  return { blocked: false };
-}
+/** Strict CORS: allow known origins from env, allow no-origin tools (curl/Postman) */
+const allowed = new Set(config.ALLOWED_ORIGINS);
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow curl/Postman
+      if (allowed.size === 0) return callback(null, false); // explicit block if empty
+      if (allowed.has(origin)) return callback(null, true);
+      return callback(new Error("CORS_NOT_ALLOWED"), false);
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    credentials: false,
+  }),
+);
 
-/* ---------- Health ---------- */
+/** ---------------- Routes ---------------- */
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-/* ---------- Chat API with guardrails ---------- */
-app.post("/chat", (req, res) => {
-  try {
-    // 0) Simple rate limit
-    const rl = rateLimit(req, res);
-    if (rl.blocked) return;
+const hits = new Map(); // (IP -> timestamps)
+function rateLimit(req) {
+  const ip =
+    req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() ||
+    req.socket.remoteAddress ||
+    "local";
+  const now = Date.now();
+  const windowMs = 15 * 1000;
+  const maxReq = 5;
+  const recent = (hits.get(ip) || []).filter((t) => now - t < windowMs);
+  hits.set(ip, [...recent, now]);
+  return recent.length >= maxReq;
+}
 
-    // 1) Validate input early
+// Chat route with guardrails from Day 9, now with better error flow
+app.post("/chat", (req, res, next) => {
+  try {
+    if (rateLimit(req)) {
+      const err = new Error("Too many requests, slow down.");
+      err.status = 429;
+      err.code = "RATE_LIMIT";
+      throw err;
+    }
+
     const { message } = req.body || {};
     if (typeof message !== "string") {
-      return res
-        .status(400)
-        .json({
-          error: {
-            code: "INPUT_INVALID_TYPE",
-            message: "`message` must be a string",
-          },
-        });
+      const err = new Error("`message` must be a string");
+      err.status = 400;
+      err.code = "INPUT_INVALID_TYPE";
+      throw err;
     }
-
     const trimmed = message.trim();
-    if (trimmed.length === 0) {
-      return res
-        .status(400)
-        .json({
-          error: { code: "INPUT_EMPTY", message: "Message cannot be empty" },
-        });
+    if (!trimmed) {
+      const err = new Error("Message cannot be empty");
+      err.status = 400;
+      err.code = "INPUT_EMPTY";
+      throw err;
     }
-
-    // 2) Length limits (client guard is helpful but never trust client)
-    const MAX_LEN = 500; // keep it small for demo
+    const MAX_LEN = 500;
     if (trimmed.length > MAX_LEN) {
-      return res.status(413).json({
-        error: {
-          code: "INPUT_TOO_LONG",
-          message: `Message too long (max ${MAX_LEN} chars)`,
-        },
-      });
+      const err = new Error(`Message too long (max ${MAX_LEN} chars)`);
+      err.status = 413;
+      err.code = "INPUT_TOO_LONG";
+      throw err;
     }
 
-    // 3) (Optional) Very light normalization (you can expand later)
     const safeMessage = trimmed.replace(/\s+/g, " ").slice(0, MAX_LEN);
 
-    // 4) Structured mock reply (kept from Day-8)
     const reply = {
       summary: "User sent a greeting message.",
       keyPoints: [
@@ -99,25 +101,44 @@ app.post("/chat", (req, res) => {
         "Backend API is functioning correctly",
       ],
       nextActions: ["Integrate real AI provider", "Enhance frontend rendering"],
-      // Keep the original for traceability (useful when you integrate LLMs)
-      _meta: { originalInputSample: safeMessage.slice(0, 50) },
+      _meta: { inputPreview: safeMessage.slice(0, 50) },
     };
 
-    // 5) Return consistent shape
     return res.json({ reply });
-  } catch (err) {
-    // 6) Safe server logging (never log secrets/PII in real apps)
-    console.error("[/chat] error:", err?.message || err);
-    return res
-      .status(500)
-      .json({
-        error: { code: "SERVER_ERROR", message: "Unexpected server error" },
-      });
+  } catch (e) {
+    next(e);
   }
 });
 
-/* ---------- Start server ---------- */
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+/** ---------------- Central error handler ---------------- */
+app.use((err, req, res, _next) => {
+  // Map error to status/code safely
+  const status = Number(err.status) || 500;
+  const code = err.code || (status >= 500 ? "SERVER_ERROR" : "BAD_REQUEST");
+
+  // Log minimal, avoid PII; include request id for tracing
+  const log = {
+    reqId: req.id,
+    path: req.path,
+    status,
+    code,
+    msg: err.message,
+  };
+  if (config.NODE_ENV !== "production") {
+    // In non-prod, include stack for debugging
+    log.stack = err.stack;
+  }
+  console.error("[ERROR]", JSON.stringify(log));
+
+  // Consistent client shape
+  res.status(status).json({
+    error: { code, message: err.message || "Unexpected server error" },
+  });
+});
+
+/** ---------------- Start server ---------------- */
+app.listen(config.PORT, () => {
+  console.log(
+    `✅ Server ready on http://localhost:${config.PORT} | env=${config.NODE_ENV}`,
+  );
 });

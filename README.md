@@ -55,3 +55,18 @@ The `/chat` endpoint implements basic enterprise-friendly guardrails:
 
 This provides a baseline for production hygiene and can be replaced with
 Redis-backed rate limiters, centralized logging, and stricter CORS in real deployments.
+
+## Security & Production Hygiene
+
+- **Secure headers** via `helmet` (XSS/clickjacking mitigations).
+- **Strict CORS**: allowed origins are configured via `ALLOWED_ORIGINS`
+  (comma-separated), e.g. `https://app.vercel.app,http://localhost:5173`.
+  Requests with no `Origin` header (curl/Postman) are allowed for testing.
+- **Request correlation**: every request includes a UUID-based request id
+  logged through `morgan` for traceability.
+- **Centralized error handler**: all errors return a consistent shape
+  `{ "error": { "code", "message" } }`; server logs avoid sensitive data.
+- **Env validation**: `config.js` validates `PORT` and parses `ALLOWED_ORIGINS`.
+- **Body size limit**: `express.json({ limit: "1mb" })` to avoid large payloads.
+- **Rate limiting**: a simple in-memory limiter for demos;
+  replace with Redis-backed limiter for multi-instance setups in production.
