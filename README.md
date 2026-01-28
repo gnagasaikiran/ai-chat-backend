@@ -1,72 +1,49 @@
-## AI Chat Backend
+# 🧠 AI Chat Backend (Node.js + Express)
 
-Node.js + Express backend for an AI chat application.
+This is the backend service for the **AI Chat Application**, providing a secure, validated, structured response API for chat messages.  
+It is built using **Node.js**, **Express**, and deployed on **Render**.  
+This backend powers the AI chat frontend hosted on Vercel.
 
-### Features
+---
 
-- /health API for service checks
-- /chat API to process user messages
-- Input validation & error handling
-- CORS enabled for frontend integration
+## 🚀 Features
 
-### Tech Stack
+- **POST /chat** endpoint with:
+  - Input validation (type, empty, max length)
+  - Lightweight rate‑limiting (dev-friendly)
+  - Structured AI-style responses:
+    - Summary
+    - Key Points
+    - Next Actions
+- **Security best practices**
+  - `helmet` for secure HTTP headers
+  - Strict CORS via `ALLOWED_ORIGINS`
+  - Request ID tracing using `uuid`
+  - Centralized error handler (consistent JSON format)
+- **Logging**
+  - Clean, traceable logs with `morgan`
+  - `X-Request-ID` returned in response headers for debugging
+- Health checks (`/health`)
+- Production-ready config structure (`config.js`)
 
-- Node.js
-- Express
-- CORS
+---
 
-### Run Locally
+# 🏗️ Architecture
 
-npm install  
-node index.js
+```mermaid
+flowchart LR
+    subgraph Browser[User Browser]
+        UI[React Frontend (Vercel)]
+    end
 
-### API
+    subgraph Backend[Node.js + Express (Render)]
+        API[/POST /chat/]
+        HEALTH[/GET /health/]
+        Guardrails[Validation + Rate-limit + Error Handler]
+    end
 
-POST /chat  
-Body:
-{
-"message": "Hello"
-}
-
-## AI Prompt Design
-
-The backend uses a system prompt to control AI behavior and ensure:
-
-- predictable responses
-- structured output
-- enterprise‑friendly communication
-
-Current implementation uses a mock AI, but the architecture is ready for real LLM integration.
-
-## Guardrails & Reliability
-
-The `/chat` endpoint implements basic enterprise-friendly guardrails:
-
-- **Input validation**
-  - Rejects non-string inputs (`400 INPUT_INVALID_TYPE`)
-  - Rejects empty messages (`400 INPUT_EMPTY`)
-  - Rejects over-long inputs (default: 500 chars, `413 INPUT_TOO_LONG`)
-- **Rate limiting**
-  - Simple in-memory dev limiter: 5 requests per 15 seconds per IP (`429 RATE_LIMIT`)
-- **Consistent error shape**
-  - Errors returned as `{ "error": { "code": "...", "message": "..." } }`
-- **Safe logging**
-  - Server logs unexpected failures with minimal data; avoid secrets/PII
-
-This provides a baseline for production hygiene and can be replaced with
-Redis-backed rate limiters, centralized logging, and stricter CORS in real deployments.
-
-## Security & Production Hygiene
-
-- **Secure headers** via `helmet` (XSS/clickjacking mitigations).
-- **Strict CORS**: allowed origins are configured via `ALLOWED_ORIGINS`
-  (comma-separated), e.g. `https://app.vercel.app,http://localhost:5173`.
-  Requests with no `Origin` header (curl/Postman) are allowed for testing.
-- **Request correlation**: every request includes a UUID-based request id
-  logged through `morgan` for traceability.
-- **Centralized error handler**: all errors return a consistent shape
-  `{ "error": { "code", "message" } }`; server logs avoid sensitive data.
-- **Env validation**: `config.js` validates `PORT` and parses `ALLOWED_ORIGINS`.
-- **Body size limit**: `express.json({ limit: "1mb" })` to avoid large payloads.
-- **Rate limiting**: a simple in-memory limiter for demos;
-  replace with Redis-backed limiter for multi-instance setups in production.
+    UI -- sends JSON message --> API
+    API --> Guardrails
+    Guardrails -- returns structured JSON --> UI
+    UI --> Browser
+```
