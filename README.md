@@ -37,3 +37,21 @@ The backend uses a system prompt to control AI behavior and ensure:
 - enterprise‑friendly communication
 
 Current implementation uses a mock AI, but the architecture is ready for real LLM integration.
+
+## Guardrails & Reliability
+
+The `/chat` endpoint implements basic enterprise-friendly guardrails:
+
+- **Input validation**
+  - Rejects non-string inputs (`400 INPUT_INVALID_TYPE`)
+  - Rejects empty messages (`400 INPUT_EMPTY`)
+  - Rejects over-long inputs (default: 500 chars, `413 INPUT_TOO_LONG`)
+- **Rate limiting**
+  - Simple in-memory dev limiter: 5 requests per 15 seconds per IP (`429 RATE_LIMIT`)
+- **Consistent error shape**
+  - Errors returned as `{ "error": { "code": "...", "message": "..." } }`
+- **Safe logging**
+  - Server logs unexpected failures with minimal data; avoid secrets/PII
+
+This provides a baseline for production hygiene and can be replaced with
+Redis-backed rate limiters, centralized logging, and stricter CORS in real deployments.
