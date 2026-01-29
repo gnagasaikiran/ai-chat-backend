@@ -1,0 +1,35 @@
+service: ai-chat-backend
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-south-1
+  stage: prod
+  memorySize: 256
+  timeout: 10
+  environment:
+    NODE_ENV: production
+    ALLOWED_ORIGINS: ${env:ALLOWED_ORIGINS, 'https://ai-chat-frontend-flame.vercel.app,http://localhost:5173'}
+
+functions:
+  api:
+    handler: lambda.handler
+    events:
+      - httpApi:
+          path: /
+          method: GET
+      - httpApi:
+          path: /health
+          method: GET
+      - httpApi:
+          path: /chat
+          method: POST
+
+plugins: []
+package:
+  patterns:
+    - "!node_modules/**/.bin"
+    - "!**/*.md"
+    - "!**/*.map"
+    - "!**/test/**"
